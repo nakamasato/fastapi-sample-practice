@@ -1,0 +1,59 @@
+name: e2e
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        mysql-version: ["8.3", "8"] # "8" tracks the latest MySQL 8.x (currently 8.4 LTS)
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: run db & api with docker compose
+        env:
+          MYSQL_VERSION: ${{ matrix.mysql-version }}
+        run: docker compose up -d
+
+      - name: wait until ready
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8000/ > /dev/null; then exit 0; fi
+            sleep 2
+          done
+          docker compose ps
+          docker compose logs
+          exit 1
+
+      - name: test hello world
+        run: |
+          curl -s localhost:8000 | jq -r .message
+          test "$(curl -s localhost:8000 | jq -r .message)" = "Hello World"
+
+      - name: test len(users) == 0
+        run: |
+          test $(curl -s -X 'GET' \
+            'http://localhost:8000/users/?skip=0&limit=100' \
+            -H 'accept: application/json' | jq length) = 0
+
+      - name: create a user
+        run: |
+          curl -s -X 'POST' \
+            'http://localhost:8000/users/' \
+            -H 'accept: application/json' \
+            -H 'Content-Type: application/json' \
+            -d '{
+              "email": "string",
+              "password": "string"
+            }'
+
+      - name: test len(users) == 1
+        run: |
+          test $(curl -s -X 'GET' \
+            'http://localhost:8000/users/?skip=0&limit=100' \
+            -H 'accept: application/json' | jq length) = 1

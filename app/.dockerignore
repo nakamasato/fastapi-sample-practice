@@ -1,0 +1,6 @@
+.dockerignore
+Dockerfile
+.venv
+.python-version
+**/__pycache__
+.claude
